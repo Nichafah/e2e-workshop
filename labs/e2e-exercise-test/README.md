@@ -18,9 +18,10 @@ start dependencies + inject test data → start SUT → run Playwright tests →
 ```bash
 git fetch --all
 git switch jest/lab/e2e-exercise-test
-cd app && npm install            # ต้องใช้ตอน build image ของ SUT
 docker info                      # Docker ต้องเปิดอยู่
 ```
+
+> ไม่ต้อง `npm install` ใน `app/`: SUT ถูก build เป็น Docker image (`npm ci` ทำใน image เอง) และ npm scripts ที่ใช้ใน lab นี้เรียกแค่ `docker compose`
 
 > port `3000` (SUT) และ `5434` (database ของ e2e) ต้องว่าง: ถ้ามี `npm run dev` ค้างอยู่ให้ปิดก่อน
 
@@ -146,7 +147,7 @@ endpoint ที่ lab นี้ใช้:
 
 **`POST /auth/register`** → `201`
 
-```json
+```jsonc
 // request
 { "nationalId": "1103700012346", "password": "voter1234", "firstName": "Somchai",
   "lastName": "Jaidee", "address": "1 Nimman Rd", "districtId": "CM-1" }
@@ -328,7 +329,16 @@ npm test
 
 ✅ `1 passed`
 
-🔴 ลองทำให้แดงด้วยเหตุผลที่ถูก: `cd ../app && docker compose stop app` แล้ว `npm test` อีกครั้ง → `ECONNREFUSED` (Playwright ต่อ SUT ไม่ได้) จากนั้น `docker compose start app` แล้วรันใหม่ให้เขียว
+🔴 ลองทำให้แดงด้วยเหตุผลที่ถูก (ยังอยู่ใน `e2e-exercise/`):
+
+```bash
+(cd ../app && docker compose stop app)    # หยุด SUT (วงเล็บ = cd แค่ชั่วคราว ไม่ย้าย directory ของเรา)
+npm test                                  # → ECONNREFUSED: Playwright ต่อ SUT ไม่ได้
+(cd ../app && docker compose start app)   # start SUT กลับมา
+npm test                                  # → เขียวอีกครั้ง
+```
+
+> ระวัง: ถ้า `cd ../app` แบบไม่มีวงเล็บ แล้วพิมพ์ `npm test` จะกลายเป็นรัน Jest test ของ `app/` แทน Playwright
 
 > ถ้า smoke test ยังไม่เขียว **อย่าเพิ่ง** เขียน test ถัดไป: ถ้า setup ผิด test ทุกตัวจะแดงด้วยเหตุผลที่ไม่เกี่ยวกับ feature
 
@@ -411,7 +421,7 @@ test('ชื่อ test case', async ({ request }) => {              // ② test
 | ② | `test('ชื่อ', async ({ request }) => { ... })` | **test case 1 ตัว** ชื่อจะแสดงใน report · ต้องเป็น `async` เพราะการยิง HTTP ต้องรอผล (`await`) · `{ request }` คือ **fixture** ที่ Playwright เตรียมให้: HTTP client ที่รู้ `baseURL` จาก `playwright.config.ts` แล้ว |
 | ③ | `const ...` | test data ของ test case นี้ ประกาศไว้ **ใน** test case |
 | ④⑤ | `await test.step('ชื่อ', async () => { ... })` | แบ่ง test case เป็นขั้นๆ ให้ report แสดงทีละขั้น · `test.step()` **return ค่าได้** จึงส่งผลลัพธ์ (เช่น response, token) ต่อให้ขั้นถัดไป · ลืม `await` = ขั้นนั้นไม่ได้รอให้เสร็จ |
-| ⑤ | `expect(actual).toBe(expected)` | assertion: ถ้าไม่ตรง test **หยุดทันที** ที่บรรทัดนั้น และ fail |
+| ⑤ ข้างใน step | `expect(actual).toBe(expected)` | assertion: ถ้าไม่ตรง test **หยุดทันที** ที่บรรทัดนั้น และ fail |
 | ⑥ | `});` | ปิด test case: **code ทุกขั้นต้องอยู่ก่อนบรรทัดนี้** |
 
 **เริ่มจาก skeleton**
@@ -464,6 +474,7 @@ test('a voter registers and then sees the candidates of their district', async (
   };
 ```
 
+- `nationalId`: ใส่ **เลขของตัวเอง** ที่ได้จาก 4.1 (`9280860332162` เป็นแค่ตัวอย่าง)
 - voter อยู่เขต `CM-2` ที่มีผู้สมัครของ test case นี้รออยู่ (จาก Step 1)
 
 ##### 4.2.1 — voter ไปลงทะเบียน (1st step · `POST /auth/register`)
@@ -494,7 +505,7 @@ test('a voter registers and then sees the candidates of their district', async (
       firstName: voter.firstName,
       lastName: voter.lastName,
       address: voter.address,
-      districtId: 'CM-2',
+      districtId: voter.districtId,
       role: 'VOTER',
     });
     expect(user).not.toHaveProperty('passwordHash');
@@ -591,7 +602,7 @@ test('a voter registers and then sees the candidates of their district', async (
       firstName: voter.firstName,
       lastName: voter.lastName,
       address: voter.address,
-      districtId: 'CM-2',
+      districtId: voter.districtId,
       role: 'VOTER',
     });
     expect(user).not.toHaveProperty('passwordHash');
@@ -646,7 +657,7 @@ Expected: 201
 Received: 409
 ```
 
-fail ที่ 4.2.2: voter `9280860332162` ถูกลงทะเบียนไปแล้วในรอบก่อน → test data ของรอบนี้ไม่ "สด" แล้ว
+fail ที่ 4.2.2: voter `nationalId` นี้ถูกลงทะเบียนไปแล้วในรอบก่อน → test data ของรอบนี้ไม่ "สด" แล้ว
 **บทเรียน:** repeatable มาจาก **ทั้งวงจร** (reset environment + test data ชุดเดิม) ไม่ใช่จากการกด `npm test` ซ้ำ
 
 🔴 ลองทำให้แดง แล้วอ่าน error message (ก่อนลองแต่ละข้อ ให้ reset ด้วย Step 6 → 1 → 2 ก่อน):
