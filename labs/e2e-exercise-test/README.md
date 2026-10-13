@@ -218,6 +218,9 @@ docker compose up -d --force-recreate --wait db-e2e
 npm run db:migrate:e2e-exercise
 ```
 
+> Step 1 คือรากฐานของ **repeatable test**: ทุกครั้งที่เริ่มวงจร เราได้ database ว่าง แล้วใส่ schema + test data ชุดเดิมเป๊ะ
+> test จึงเจอสภาพแวดล้อมเหมือนเดิมทุกครั้ง (ดู 4.0)
+
 test data อยู่ใน `app/db/changelog/changes/902-e2e-exercise-seed.sql` เป็น changeset ปกติของ Liquibase:
 
 ```sql
@@ -252,13 +255,14 @@ docker compose exec db-e2e psql -U election -d election_e2e \
 
 ```bash
 # ยังอยู่ใน app/
-docker compose up -d --build --wait app
+docker compose up -d --build --force-recreate --wait app
 curl http://localhost:3000/health
 ```
 
 ✅ `{"status":"ok"}`
 
 - `--build` = build Docker image จากโค้ดล่าสุด
+- `--force-recreate` = start SUT ใหม่เสมอ ให้ต่อกับ database ที่เพิ่งสร้างใน Step 1 (ไม่ค้าง connection เก่า)
 - `--wait` = รอจน healthcheck (`GET /health`) ผ่าน ไม่ต้อง `sleep` เดา
 - SUT ต่อ database ผ่าน `DATABASE_URL=postgres://election:election@db-e2e:5432/election_e2e` (ชื่อ `db-e2e` ใช้ได้เพราะอยู่ใน Docker network เดียวกัน)
 
@@ -270,7 +274,7 @@ curl http://localhost:3000/health
 
 ```bash
 cd ..                     # กลับไป root ของ repo
-mkdir -p e2e-exercise/tests/support
+mkdir -p e2e-exercise/tests e2e-exercise/tools
 cd e2e-exercise
 npm init -y
 npm install -D @playwright/test @types/node@24
@@ -330,31 +334,66 @@ npm test
 
 ### Step 4 — เขียน e2e test: voter ลงทะเบียน แล้วเห็นรายชื่อผู้สมัคร · 30 นาที
 
-**4.0** ปัญหาแรก: `nationalId` ห้ามซ้ำ ถ้า hard-code ไว้ รันครั้งที่สองจะได้ `409 national id already registered`
-และต้องผ่าน **checksum ของเลขบัตรประชาชนไทย** ด้วย → สร้าง helper `e2e-exercise/tests/support/thaiNationalId.ts`
+**4.0 — Automated test ต้อง repeatable**
 
-```ts
-// A random national ID that passes the Thai checksum, so every run registers a new voter.
-export function randomThaiNationalId(): string {
+repeatable = รันซ้ำกี่ครั้งก็ได้ผลเหมือนเดิม ไม่ว่าจะรันครั้งแรกหรือครั้งที่ 100 ถ้า test เขียวครั้งแรกแต่แดงครั้งที่สองโดยที่โค้ดไม่ได้เปลี่ยน เราจะเลิกเชื่อ test นั้นทันที
+
+lab นี้ทำให้ repeatable ด้วย 2 อย่าง:
+
+- **สภาพแวดล้อมเหมือนเดิมทุกรอบ** — ทุกรอบเริ่มจาก Step 1 (database ว่าง + test data ชุดเดิม) และจบที่ Step 6 (ทิ้งทั้งหมด)
+  วงจร `Step 1 → 2 → npm test → Step 6` จึงรันซ้ำได้ไม่จำกัด
+- **1 test case : 1 test data** — แต่ละ test case มี test data ของตัวเอง **fix ไว้ใน test** ไม่แชร์กับ test case อื่น
+  - ผู้สมัคร 2 คนในเขต `CM-2` (`902-e2e-exercise-seed.sql`) และ voter ที่จะลงทะเบียน เป็นของ test case นี้เท่านั้น
+  - test case ใหม่ต้องมี test data ชุดใหม่ของตัวเอง (`nationalId` ใหม่, เขตอื่น) ไม่อย่างนั้น test จะชนกันเอง
+
+**4.1 — เริ่มจาก test data: สร้าง `nationalId` ด้วย `randomThaiNationalId()` แล้ว fix ไว้ใน test**
+
+`nationalId` ต้องผ่าน **checksum ของเลขบัตรประชาชนไทย** (ไม่อย่างนั้นได้ `400 invalid national id`) จะคิดเองก็ยาก
+→ สร้าง tool `e2e-exercise/tools/randomThaiNationalId.mjs` ไว้ **generate test data** (ไม่ได้ถูกเรียกตอน test รัน)
+
+```js
+// Generates test data: a random national ID that passes the Thai checksum.
+// Run it once, then fix the printed value in the test case:
+//
+//   node tools/randomThaiNationalId.mjs
+
+import { fileURLToPath } from 'node:url';
+
+/** @returns {string} 13 digits, starting with 9 so it never clashes with the seeded accounts */
+export function randomThaiNationalId() {
   const first12 = '9' + Array.from({ length: 11 }, () => Math.floor(Math.random() * 10)).join('');
   const sum = [...first12].reduce((acc, digit, i) => acc + Number(digit) * (13 - i), 0);
   return first12 + ((11 - (sum % 11)) % 10);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  console.log(randomThaiNationalId());
 }
 ```
 
 > checksum: คูณหลักที่ 1–12 ด้วย 13, 12, …, 2 แล้วรวมกัน → หลักที่ 13 = `(11 - (sum % 11)) % 10`
 
-สร้าง `e2e-exercise/tests/voter-sees-candidates.spec.ts` แล้วเขียนทีละ step ใช้ `test.step()` เพื่อให้ report แสดงแต่ละขั้นของ journey
+รัน 1 ครั้ง แล้ว copy เลขที่ได้ไปใช้ใน test
 
-**Arrange** — ข้อมูลของ voter (อยู่เขต `CM-2` ที่เรา inject ผู้สมัครไว้ใน Step 1)
+```bash
+node tools/randomThaiNationalId.mjs
+# 9280860332162   ← เลขของแต่ละคนจะไม่เหมือนกัน
+```
+
+> ทำไม **fix** ไว้ ไม่สุ่มใหม่ทุกครั้งที่ test รัน? test data ที่ fix ไว้ทำให้ test **deterministic**: รันกี่รอบก็ส่ง request เดิม
+> เมื่อ fail เราเอา `nationalId` เดิมไปไล่ดูใน database / log ของ SUT ได้ทันที
+
+**4.2 — Arrange: test data ของ test case นี้**
+
+สร้าง `e2e-exercise/tests/voter-sees-candidates.spec.ts` แล้วเขียนทีละ step ใช้ `test.step()` เพื่อให้ report แสดงแต่ละขั้นของ journey
 
 ```ts
 import { expect, test } from '@playwright/test';
-import { randomThaiNationalId } from './support/thaiNationalId';
 
 test('a voter registers and then sees the candidates of their district', async ({ request }) => {
+  // Test data owned by this test case only. nationalId came from `node tools/randomThaiNationalId.mjs`.
   const voter = {
-    nationalId: randomThaiNationalId(),
+    nationalId: '9280860332162',
     password: 'voter1234',
     firstName: 'สมชาย',
     lastName: 'ใจดี',
@@ -362,6 +401,8 @@ test('a voter registers and then sees the candidates of their district', async (
     districtId: 'CM-2',
   };
 ```
+
+- voter อยู่เขต `CM-2` ที่มีผู้สมัครของ test case นี้รออยู่ (จาก Step 1)
 
 **1st step — voter ไปลงทะเบียน** (`POST /auth/register`)
 
@@ -449,13 +490,26 @@ test('a voter registers and then sees the candidates of their district', async (
 
 ```bash
 npm test                  # รันทุก test
-npm test -- --repeat-each=3   # รันซ้ำ 3 รอบ ต้องเขียวทุกรอบ (ไม่มี 409 เพราะ nationalId สุ่มใหม่)
 npm run report            # เปิด HTML report → คลิก test เพื่อดูแต่ละ test.step
 ```
 
 ✅ `passed` ทุกตัว
 
-🔴 ลองทำให้แดง แล้วอ่าน error message:
+**พิสูจน์ว่า repeatable:** ทำ Step 6 → Step 1 → Step 2 แล้ว `npm test` อีกรอบ → ✅ `passed` เหมือนเดิม
+
+🔴 แล้วถ้ารัน `npm test` ซ้ำ **โดยไม่ reset**?
+
+```
+registration succeeds as a VOTER
+Error: {"error":"national id already registered"}
+Expected: 201
+Received: 409
+```
+
+voter `9280860332162` ถูกลงทะเบียนไปแล้วในรอบก่อน → test data ของรอบนี้ไม่ "สด" แล้ว
+**บทเรียน:** repeatable มาจาก **ทั้งวงจร** (reset environment + test data ชุดเดิม) ไม่ใช่จากการกด `npm test` ซ้ำ
+
+🔴 ลองทำให้แดง แล้วอ่าน error message (ก่อนลองแต่ละข้อ ให้ reset ด้วย Step 6 → 1 → 2 ก่อน):
 
 1. เปลี่ยน `districtId` ของ voter เป็น `'CM-1'` → step 5 fail เพราะเขต CM-1 ไม่มีผู้สมัคร (`[]`)
 2. reset database โดยไม่ inject test data: ทำ Step 1.1 แล้วใช้ `npm run db:migrate:e2e` (context `e2e` อย่างเดียว ไม่มี `e2e-exercise`) แทน 1.2 แล้วทำ Step 2 ใหม่ → step 5 fail เหมือนกัน
@@ -480,7 +534,7 @@ docker compose ps -a      # ต้องไม่มี container เหลื�
 # app/
 docker compose up -d --force-recreate --wait db-e2e
 npm run db:migrate:e2e-exercise
-docker compose up -d --build --wait app
+docker compose up -d --build --force-recreate --wait app
 
 # e2e-exercise/
 npm test
