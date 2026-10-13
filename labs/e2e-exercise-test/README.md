@@ -334,7 +334,7 @@ npm test
 
 ### Step 4 — เขียน e2e test: voter ลงทะเบียน แล้วเห็นรายชื่อผู้สมัคร · 30 นาที
 
-**4.0 — Automated test ต้อง repeatable**
+#### 4.0 — Automated test ต้อง repeatable
 
 repeatable = รันซ้ำกี่ครั้งก็ได้ผลเหมือนเดิม ไม่ว่าจะรันครั้งแรกหรือครั้งที่ 100 ถ้า test เขียวครั้งแรกแต่แดงครั้งที่สองโดยที่โค้ดไม่ได้เปลี่ยน เราจะเลิกเชื่อ test นั้นทันที
 
@@ -346,7 +346,7 @@ lab นี้ทำให้ repeatable ด้วย 2 อย่าง:
   - ผู้สมัคร 2 คนในเขต `CM-2` (`902-e2e-exercise-seed.sql`) และ voter ที่จะลงทะเบียน เป็นของ test case นี้เท่านั้น
   - test case ใหม่ต้องมี test data ชุดใหม่ของตัวเอง (`nationalId` ใหม่, เขตอื่น) ไม่อย่างนั้น test จะชนกันเอง
 
-**4.1 — เริ่มจาก test data: สร้าง `nationalId` ด้วย `randomThaiNationalId()` แล้ว fix ไว้ใน test**
+#### 4.1 — เริ่มจาก test data: สร้าง `nationalId` ด้วย `randomThaiNationalId()` แล้ว fix ไว้ใน test
 
 `nationalId` ต้องผ่าน **checksum ของเลขบัตรประชาชนไทย** (ไม่อย่างนั้นได้ `400 invalid national id`) จะคิดเองก็ยาก
 → สร้าง tool `e2e-exercise/tools/randomThaiNationalId.mjs` ไว้ **generate test data** (ไม่ได้ถูกเรียกตอน test รัน)
@@ -383,9 +383,20 @@ node tools/randomThaiNationalId.mjs
 > ทำไม **fix** ไว้ ไม่สุ่มใหม่ทุกครั้งที่ test รัน? test data ที่ fix ไว้ทำให้ test **deterministic**: รันกี่รอบก็ส่ง request เดิม
 > เมื่อ fail เราเอา `nationalId` เดิมไปไล่ดูใน database / log ของ SUT ได้ทันที
 
-**4.2 — Arrange: test data ของ test case นี้**
+#### 4.2 — เขียน test case: voter ลงทะเบียน แล้วเห็นรายชื่อผู้สมัคร
 
-สร้าง `e2e-exercise/tests/voter-sees-candidates.spec.ts` แล้วเขียนทีละ step ใช้ `test.step()` เพื่อให้ report แสดงแต่ละขั้นของ journey
+สร้าง `e2e-exercise/tests/voter-sees-candidates.spec.ts` แล้วเขียนทีละขั้นตาม 4.2.1–4.2.5
+แต่ละขั้นอยู่ใน `test.step()` ของตัวเอง (comment `// 1st step` … `// 5th step` ในโค้ด) เพื่อให้ report แสดงแต่ละขั้นของ journey แยกกัน
+
+| ขั้น | `test.step()` | ทำอะไร |
+| --- | --- | --- |
+| 4.2.1 | `voter registers` | `POST /auth/register` |
+| 4.2.2 | `registration succeeds as a VOTER` | assert response ของการลงทะเบียน |
+| 4.2.3 | `voter logs in` | `POST /auth/login` → ได้ token |
+| 4.2.4 | `voter requests their candidates` | `GET /me/candidates` |
+| 4.2.5 | `voter sees the CM-2 candidates` | assert รายชื่อผู้สมัคร |
+
+**Arrange — test data ของ test case นี้** (เริ่ม test case ด้วยข้อมูลจาก 4.1)
 
 ```ts
 import { expect, test } from '@playwright/test';
@@ -404,7 +415,7 @@ test('a voter registers and then sees the candidates of their district', async (
 
 - voter อยู่เขต `CM-2` ที่มีผู้สมัครของ test case นี้รออยู่ (จาก Step 1)
 
-**1st step — voter ไปลงทะเบียน** (`POST /auth/register`)
+##### 4.2.1 — voter ไปลงทะเบียน (1st step · `POST /auth/register`)
 
 ```ts
   // 1st step: voter goes to register
@@ -415,7 +426,7 @@ test('a voter registers and then sees the candidates of their district', async (
 
 - `data` = request body เป็น JSON และ Playwright ใส่ `Content-Type: application/json` ให้
 
-**2nd step — assert response ของการลงทะเบียน**
+##### 4.2.2 — assert response ของการลงทะเบียน (2nd step)
 
 ```ts
   // 2nd step: assert the response
@@ -439,7 +450,7 @@ test('a voter registers and then sees the candidates of their district', async (
 - `expect.any(Number)` = เราไม่รู้ `id` ล่วงหน้า (database เป็นคนสร้าง) จึง assert แค่ type
 - `toEqual` ทั้ง object = ยืนยันด้วยว่า **ไม่มี field เกินมา** เช่น `passwordHash` (ซึ่งเป็น security requirement)
 
-**3rd step — voter login** (`POST /auth/login`)
+##### 4.2.3 — voter login (3rd step · `POST /auth/login`)
 
 `GET /me/candidates` ต้องใช้ token จึงต้อง login ก่อน ด้วย `nationalId` และ `password` เดียวกับที่ลงทะเบียน
 
@@ -459,7 +470,7 @@ test('a voter registers and then sees the candidates of their district', async (
 - `test.step()` return ค่าได้ → ส่ง `token` ต่อให้ step ถัดไป
 - assert การ login ไว้ใน step นี้เลย ถ้า login ไม่ผ่าน test จะ fail ที่ "voter logs in" ไม่ใช่ไปแดงงงๆ ที่ step หลัง
 
-**4th step — voter ขอดูรายชื่อผู้สมัครจาก election API** (`GET /me/candidates`)
+##### 4.2.4 — voter ขอดูรายชื่อผู้สมัครจาก election API (4th step · `GET /me/candidates`)
 
 ```ts
   // 4th step: voter requests the candidates from the election API
@@ -470,7 +481,7 @@ test('a voter registers and then sees the candidates of their district', async (
 
 - ไม่ต้องส่ง `districtId` เพราะ SUT อ่านเขตจาก **token** ของ voter
 
-**5th step — assert รายชื่อผู้สมัคร** (ต้องตรงกับ `902-e2e-exercise-seed.sql`)
+##### 4.2.5 — assert รายชื่อผู้สมัคร (5th step · ต้องตรงกับ `902-e2e-exercise-seed.sql`)
 
 ```ts
   // 5th step: assert the candidates (the ones from 902-e2e-exercise-seed.sql)
@@ -506,15 +517,15 @@ Expected: 201
 Received: 409
 ```
 
-voter `9280860332162` ถูกลงทะเบียนไปแล้วในรอบก่อน → test data ของรอบนี้ไม่ "สด" แล้ว
+fail ที่ 4.2.2: voter `9280860332162` ถูกลงทะเบียนไปแล้วในรอบก่อน → test data ของรอบนี้ไม่ "สด" แล้ว
 **บทเรียน:** repeatable มาจาก **ทั้งวงจร** (reset environment + test data ชุดเดิม) ไม่ใช่จากการกด `npm test` ซ้ำ
 
 🔴 ลองทำให้แดง แล้วอ่าน error message (ก่อนลองแต่ละข้อ ให้ reset ด้วย Step 6 → 1 → 2 ก่อน):
 
-1. เปลี่ยน `districtId` ของ voter เป็น `'CM-1'` → step 5 fail เพราะเขต CM-1 ไม่มีผู้สมัคร (`[]`)
-2. reset database โดยไม่ inject test data: ทำ Step 1.1 แล้วใช้ `npm run db:migrate:e2e` (context `e2e` อย่างเดียว ไม่มี `e2e-exercise`) แทน 1.2 แล้วทำ Step 2 ใหม่ → step 5 fail เหมือนกัน
+1. เปลี่ยน `districtId` ของ voter เป็น `'CM-1'` → fail ที่ 4.2.5 เพราะเขต CM-1 ไม่มีผู้สมัคร (`[]`)
+2. reset database โดยไม่ inject test data: ทำ Step 1.1 แล้วใช้ `npm run db:migrate:e2e` (context `e2e` อย่างเดียว ไม่มี `e2e-exercise`) แทน 1.2 แล้วทำ Step 2 ใหม่ → fail ที่ 4.2.5 เหมือนกัน
    **บทเรียน:** e2e test พึ่ง test data ที่เตรียมไว้ ถ้า fail ต้องดูก่อนว่าเป็นเพราะ **SUT ผิด** หรือ **environment/data ผิด**
-3. เปลี่ยน `password` เป็น `'1234'` → step 2 fail พร้อม message `password must be at least 8 characters`
+3. เปลี่ยน `password` เป็น `'1234'` → fail ที่ 4.2.2 พร้อม message `password must be at least 8 characters`
 
 ### Step 6 — Stop SUT และ dependencies · 2 นาที
 
@@ -552,6 +563,6 @@ docker compose --profile e2e down
 
 ## คำถามปิด lab
 
-- ถ้า test fail ที่ step 5 เราจะรู้ได้อย่างไรว่า bug อยู่ที่ route, service, repository หรือ test data?
+- ถ้า test fail ที่ 4.2.5 เราจะรู้ได้อย่างไรว่า bug อยู่ที่ route, service, repository หรือ test data?
 - ทำไม e2e test ควรมี **น้อย** เมื่อเทียบกับ unit test? อะไรบ้างที่ e2e test เท่านั้นจับได้?
 - inject test data ผ่าน Liquibase (SQL) กับผ่าน API ต่างกันอย่างไร? แบบไหนเสี่ยงกว่าเมื่อ schema เปลี่ยน?
