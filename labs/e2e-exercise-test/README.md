@@ -207,7 +207,11 @@ flowchart LR
 
 คำสั่งใน Step 1, 2, 6 รันใน `app/` · คำสั่งใน Step 3–5 รันใน `e2e-exercise/`
 
+> ⚠️ ทั้ง `app/` และ `e2e-exercise/` มี `npm test` ถ้าอยู่ผิด directory จะ **ไม่ error** แต่รันผิด test (`app/` = Jest, `e2e-exercise/` = Playwright) ดู 📂 ใต้หัวข้อแต่ละ Step ก่อนพิมพ์คำสั่ง และเช็กด้วย `pwd` ได้
+
 ### Step 1 — Start dependencies และ inject test data · 10 นาที
+
+📂 `app/` (เริ่มจาก root ของ repo)
 
 ```bash
 cd app
@@ -254,6 +258,8 @@ docker compose exec db-e2e psql -U election -d election_e2e \
 
 ### Step 2 — Start SUT · 5 นาที
 
+📂 `app/`
+
 ```bash
 # ยังอยู่ใน app/
 docker compose up -d --build --force-recreate --wait app
@@ -270,6 +276,8 @@ curl http://localhost:3000/health
 ดู log ของ SUT ได้ด้วย `docker compose logs -f app`
 
 ### Step 3 — Setup Playwright project และทดสอบ setup · 15 นาที
+
+📂 `app/` → `e2e-exercise/` (ขั้นแรกของ Step นี้สร้างและย้ายเข้า `e2e-exercise/`)
 
 สร้าง Playwright project แยกจาก `app/` เพื่อย้ำว่า test เป็น **คนนอก** ที่รู้จักแค่ HTTP
 
@@ -344,6 +352,8 @@ npm test                                  # → เขียวอีกคร�
 
 ### Step 4 — เขียน e2e test: voter ลงทะเบียน แล้วเห็นรายชื่อผู้สมัคร · 30 นาที
 
+📂 `e2e-exercise/`
+
 #### 4.0 — Automated test ต้อง repeatable
 
 repeatable = รันซ้ำกี่ครั้งก็ได้ผลเหมือนเดิม ไม่ว่าจะรันครั้งแรกหรือครั้งที่ 100 ถ้า test เขียวครั้งแรกแต่แดงครั้งที่สองโดยที่โค้ดไม่ได้เปลี่ยน เราจะเลิกเชื่อ test นั้นทันที
@@ -386,6 +396,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 รัน 1 ครั้ง แล้ว copy เลขที่ได้ไปใช้ใน test
 
 ```bash
+# อยู่ใน e2e-exercise/
 node tools/randomThaiNationalId.mjs
 # 9280860332162   ← เลขของแต่ละคนจะไม่เหมือนกัน
 ```
@@ -639,7 +650,10 @@ test('a voter registers and then sees the candidates of their district', async (
 
 ### Step 5 — Run และดู report · 10 นาที
 
+📂 `e2e-exercise/`
+
 ```bash
+# อยู่ใน e2e-exercise/ (ไม่ใช่ app/)
 npm test                  # รันทุก test
 npm run report            # เปิด HTML report → คลิก test เพื่อดูแต่ละ test.step
 ```
@@ -647,6 +661,17 @@ npm run report            # เปิด HTML report → คลิก test เ�
 ✅ `passed` ทุกตัว
 
 **พิสูจน์ว่า repeatable:** ทำ Step 6 → Step 1 → Step 2 แล้ว `npm test` อีกรอบ → ✅ `passed` เหมือนเดิม
+
+```bash
+# จาก e2e-exercise/
+cd ../app
+docker compose --profile e2e down                          # Step 6
+docker compose up -d --force-recreate --wait db-e2e        # Step 1.1
+npm run db:migrate:e2e-exercise                            # Step 1.2
+docker compose up -d --build --force-recreate --wait app   # Step 2
+cd ../e2e-exercise                                         # ⚠️ กลับมาก่อน npm test
+npm test
+```
 
 🔴 แล้วถ้ารัน `npm test` ซ้ำ **โดยไม่ reset**?
 
@@ -668,6 +693,8 @@ fail ที่ 4.2.2: voter `nationalId` นี้ถูกลงทะเบี
 3. เปลี่ยน `password` เป็น `'1234'` → fail ที่ 4.2.2 พร้อม message `password must be at least 8 characters`
 
 ### Step 6 — Stop SUT และ dependencies · 2 นาที
+
+📂 `e2e-exercise/` → `app/`
 
 ```bash
 cd ../app
