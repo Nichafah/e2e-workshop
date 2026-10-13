@@ -385,8 +385,60 @@ node tools/randomThaiNationalId.mjs
 
 #### 4.2 — เขียน test case: voter ลงทะเบียน แล้วเห็นรายชื่อผู้สมัคร
 
-สร้าง `e2e-exercise/tests/voter-sees-candidates.spec.ts` แล้วเขียนทีละขั้นตาม 4.2.1–4.2.5
-แต่ละขั้นอยู่ใน `test.step()` ของตัวเอง (comment `// 1st step` … `// 5th step` ในโค้ด) เพื่อให้ report แสดงแต่ละขั้นของ journey แยกกัน
+**โครงสร้างของ Playwright test script**
+
+test script 1 ไฟล์ (`*.spec.ts` ใน `tests/`) มีส่วนประกอบแบบนี้ (เทียบกับ `health.spec.ts` ใน Step 3 ที่เป็นตัวอย่างสั้นที่สุด):
+
+```ts
+import { expect, test } from '@playwright/test';            // ① import
+
+test('ชื่อ test case', async ({ request }) => {              // ② test case 1 ตัว
+  const data = { /* ... */ };                                // ③ Arrange: test data
+
+  const res = await test.step('ชื่อขั้น', () =>              // ④ step: ทำอะไรสักอย่าง (Act)
+    request.get('/some/path'),
+  );
+
+  await test.step('ชื่อขั้น', async () => {                   // ⑤ step: ตรวจผล (Assert)
+    expect(res.status()).toBe(200);
+  });
+});                                                          // ⑥ ปิด test case
+```
+
+| # | ส่วน | ความหมาย |
+| --- | --- | --- |
+| ① | `import { expect, test }` | `test` ใช้ประกาศ test case, `expect` ใช้ assert |
+| ② | `test('ชื่อ', async ({ request }) => { ... })` | **test case 1 ตัว** ชื่อจะแสดงใน report · ต้องเป็น `async` เพราะการยิง HTTP ต้องรอผล (`await`) · `{ request }` คือ **fixture** ที่ Playwright เตรียมให้: HTTP client ที่รู้ `baseURL` จาก `playwright.config.ts` แล้ว |
+| ③ | `const ...` | test data ของ test case นี้ ประกาศไว้ **ใน** test case |
+| ④⑤ | `await test.step('ชื่อ', async () => { ... })` | แบ่ง test case เป็นขั้นๆ ให้ report แสดงทีละขั้น · `test.step()` **return ค่าได้** จึงส่งผลลัพธ์ (เช่น response, token) ต่อให้ขั้นถัดไป · ลืม `await` = ขั้นนั้นไม่ได้รอให้เสร็จ |
+| ⑤ | `expect(actual).toBe(expected)` | assertion: ถ้าไม่ตรง test **หยุดทันที** ที่บรรทัดนั้น และ fail |
+| ⑥ | `});` | ปิด test case: **code ทุกขั้นต้องอยู่ก่อนบรรทัดนี้** |
+
+**เริ่มจาก skeleton**
+
+สร้าง `e2e-exercise/tests/voter-sees-candidates.spec.ts` แล้ว copy skeleton นี้ไปวาง: มีที่ว่างสำหรับทุกขั้นไว้แล้ว เป็นบรรทัด comment
+
+```ts
+import { expect, test } from '@playwright/test';
+
+test('a voter registers and then sees the candidates of their district', async ({ request }) => {
+  // Test data owned by this test case only. nationalId came from `node tools/randomThaiNationalId.mjs`.
+
+  // 1st step: voter goes to register
+
+  // 2nd step: assert the response
+
+  // 3rd step: voter logs in
+
+  // 4th step: voter requests the candidates from the election API
+
+  // 5th step: assert the candidates (the ones from 902-e2e-exercise-seed.sql)
+});
+```
+
+**วิธีเติม code:** ในแต่ละขั้นด้านล่าง บรรทัดแรกของ code คือ comment ที่ **มีอยู่แล้ว** ใน skeleton → หา comment นั้นในไฟล์ แล้ววาง code บรรทัดที่เหลือไว้ **ใต้** comment นั้น (ย่อหน้า 2 ช่อง เพราะอยู่ใน test case)
+
+แต่ละขั้นอยู่ใน `test.step()` ของตัวเอง เพื่อให้ report แสดงแต่ละขั้นของ journey แยกกัน:
 
 | ขั้น | `test.step()` | ทำอะไร |
 | --- | --- | --- |
@@ -396,12 +448,11 @@ node tools/randomThaiNationalId.mjs
 | 4.2.4 | `voter requests their candidates` | `GET /me/candidates` |
 | 4.2.5 | `voter sees the CM-2 candidates` | assert รายชื่อผู้สมัคร |
 
-**Arrange — test data ของ test case นี้** (เริ่ม test case ด้วยข้อมูลจาก 4.1)
+##### Arrange — test data ของ test case นี้ (ข้อมูลจาก 4.1)
+
+วางใต้ comment `// Test data owned by this test case only. ...`
 
 ```ts
-import { expect, test } from '@playwright/test';
-
-test('a voter registers and then sees the candidates of their district', async ({ request }) => {
   // Test data owned by this test case only. nationalId came from `node tools/randomThaiNationalId.mjs`.
   const voter = {
     nationalId: '9280860332162',
@@ -417,6 +468,8 @@ test('a voter registers and then sees the candidates of their district', async (
 
 ##### 4.2.1 — voter ไปลงทะเบียน (1st step · `POST /auth/register`)
 
+วางใต้ comment `// 1st step: voter goes to register`
+
 ```ts
   // 1st step: voter goes to register
   const registerRes = await test.step('voter registers', () =>
@@ -427,6 +480,8 @@ test('a voter registers and then sees the candidates of their district', async (
 - `data` = request body เป็น JSON และ Playwright ใส่ `Content-Type: application/json` ให้
 
 ##### 4.2.2 — assert response ของการลงทะเบียน (2nd step)
+
+วางใต้ comment `// 2nd step: assert the response`
 
 ```ts
   // 2nd step: assert the response
@@ -454,6 +509,8 @@ test('a voter registers and then sees the candidates of their district', async (
 
 `GET /me/candidates` ต้องใช้ token จึงต้อง login ก่อน ด้วย `nationalId` และ `password` เดียวกับที่ลงทะเบียน
 
+วางใต้ comment `// 3rd step: voter logs in`
+
 ```ts
   // 3rd step: voter logs in
   const token = await test.step('voter logs in', async () => {
@@ -472,6 +529,8 @@ test('a voter registers and then sees the candidates of their district', async (
 
 ##### 4.2.4 — voter ขอดูรายชื่อผู้สมัครจาก election API (4th step · `GET /me/candidates`)
 
+วางใต้ comment `// 4th step: voter requests the candidates from the election API`
+
 ```ts
   // 4th step: voter requests the candidates from the election API
   const candidatesRes = await test.step('voter requests their candidates', () =>
@@ -483,7 +542,77 @@ test('a voter registers and then sees the candidates of their district', async (
 
 ##### 4.2.5 — assert รายชื่อผู้สมัคร (5th step · ต้องตรงกับ `902-e2e-exercise-seed.sql`)
 
+วางใต้ comment `// 5th step: assert the candidates (the ones from 902-e2e-exercise-seed.sql)`
+
 ```ts
+  // 5th step: assert the candidates (the ones from 902-e2e-exercise-seed.sql)
+  await test.step('voter sees the CM-2 candidates', async () => {
+    expect(candidatesRes.status(), await candidatesRes.text()).toBe(200);
+    expect(await candidatesRes.json()).toEqual([
+      { id: expect.any(Number), number: 1, name: 'อนันต์ ศรีสุข', party: 'พรรคดอยสุเทพ', selected: false },
+      { id: expect.any(Number), number: 2, name: 'มาลี วงศ์คำ', party: 'พรรคแม่ปิง', selected: false },
+    ]);
+  });
+```
+
+- assert ทั้ง array = ยืนยัน **ลำดับ** (เรียงตาม `number`), **เฉพาะเขต CM-2** (ไม่มีผู้สมัครเขตอื่นปนมา) และ `selected: false` (voter ใหม่ยังไม่ได้ลงคะแนน)
+
+##### ไฟล์เต็ม: เทียบกับของตัวเอง
+
+<details>
+<summary><code>e2e-exercise/tests/voter-sees-candidates.spec.ts</code> (คลิกเพื่อดู)</summary>
+
+```ts
+import { expect, test } from '@playwright/test';
+
+test('a voter registers and then sees the candidates of their district', async ({ request }) => {
+  // Test data owned by this test case only. nationalId came from `node tools/randomThaiNationalId.mjs`.
+  const voter = {
+    nationalId: '9280860332162',
+    password: 'voter1234',
+    firstName: 'สมชาย',
+    lastName: 'ใจดี',
+    address: '239 ถนนห้วยแก้ว',
+    districtId: 'CM-2',
+  };
+
+  // 1st step: voter goes to register
+  const registerRes = await test.step('voter registers', () =>
+    request.post('/auth/register', { data: voter }),
+  );
+
+  // 2nd step: assert the response
+  await test.step('registration succeeds as a VOTER', async () => {
+    expect(registerRes.status(), await registerRes.text()).toBe(201);
+    const user = await registerRes.json();
+    expect(user).toEqual({
+      id: expect.any(Number),
+      nationalId: voter.nationalId,
+      firstName: voter.firstName,
+      lastName: voter.lastName,
+      address: voter.address,
+      districtId: 'CM-2',
+      role: 'VOTER',
+    });
+    expect(user).not.toHaveProperty('passwordHash');
+  });
+
+  // 3rd step: voter logs in
+  const token = await test.step('voter logs in', async () => {
+    const loginRes = await request.post('/auth/login', {
+      data: { nationalId: voter.nationalId, password: voter.password },
+    });
+    expect(loginRes.status(), await loginRes.text()).toBe(200);
+    const { token } = await loginRes.json();
+    expect(token).toEqual(expect.any(String));
+    return token;
+  });
+
+  // 4th step: voter requests the candidates from the election API
+  const candidatesRes = await test.step('voter requests their candidates', () =>
+    request.get('/me/candidates', { headers: { Authorization: `Bearer ${token}` } }),
+  );
+
   // 5th step: assert the candidates (the ones from 902-e2e-exercise-seed.sql)
   await test.step('voter sees the CM-2 candidates', async () => {
     expect(candidatesRes.status(), await candidatesRes.text()).toBe(200);
@@ -495,7 +624,7 @@ test('a voter registers and then sees the candidates of their district', async (
 });
 ```
 
-- assert ทั้ง array = ยืนยัน **ลำดับ** (เรียงตาม `number`), **เฉพาะเขต CM-2** (ไม่มีผู้สมัครเขตอื่นปนมา) และ `selected: false` (voter ใหม่ยังไม่ได้ลงคะแนน)
+</details>
 
 ### Step 5 — Run และดู report · 10 นาที
 
