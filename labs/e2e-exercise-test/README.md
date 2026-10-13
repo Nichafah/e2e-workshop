@@ -383,29 +383,41 @@ test('a voter registers and then sees the candidates of their district', async (
 - `expect.any(Number)` = เราไม่รู้ `id` ล่วงหน้า (database เป็นคนสร้าง) จึง assert แค่ type
 - `toEqual` ทั้ง object = ยืนยันด้วยว่า **ไม่มี field เกินมา** เช่น `passwordHash` (ซึ่งเป็น security requirement)
 
-**3rd step — voter ขอดูรายชื่อผู้สมัครจาก election API**
+**3rd step — voter login** (`POST /auth/login`)
 
-`GET /me/candidates` ต้องใช้ token จึงต้อง login ก่อน
+`GET /me/candidates` ต้องใช้ token จึงต้อง login ก่อน ด้วย `nationalId` และ `password` เดียวกับที่ลงทะเบียน
 
 ```ts
-  // 3rd step: voter logs in, then asks the election API for the candidates
-  const candidatesRes = await test.step('voter requests their candidates', async () => {
+  // 3rd step: voter logs in
+  const token = await test.step('voter logs in', async () => {
     const loginRes = await request.post('/auth/login', {
       data: { nationalId: voter.nationalId, password: voter.password },
     });
     expect(loginRes.status(), await loginRes.text()).toBe(200);
     const { token } = await loginRes.json();
-
-    return request.get('/me/candidates', { headers: { Authorization: `Bearer ${token}` } });
+    expect(token).toEqual(expect.any(String));
+    return token;
   });
+```
+
+- `test.step()` return ค่าได้ → ส่ง `token` ต่อให้ step ถัดไป
+- assert การ login ไว้ใน step นี้เลย ถ้า login ไม่ผ่าน test จะ fail ที่ "voter logs in" ไม่ใช่ไปแดงงงๆ ที่ step หลัง
+
+**4th step — voter ขอดูรายชื่อผู้สมัครจาก election API** (`GET /me/candidates`)
+
+```ts
+  // 4th step: voter requests the candidates from the election API
+  const candidatesRes = await test.step('voter requests their candidates', () =>
+    request.get('/me/candidates', { headers: { Authorization: `Bearer ${token}` } }),
+  );
 ```
 
 - ไม่ต้องส่ง `districtId` เพราะ SUT อ่านเขตจาก **token** ของ voter
 
-**4th step — assert รายชื่อผู้สมัคร** (ต้องตรงกับ `test-data.sql`)
+**5th step — assert รายชื่อผู้สมัคร** (ต้องตรงกับ `test-data.sql`)
 
 ```ts
-  // 4th step: assert the candidates (the ones from test-data.sql)
+  // 5th step: assert the candidates (the ones from test-data.sql)
   await test.step('voter sees the CM-2 candidates', async () => {
     expect(candidatesRes.status(), await candidatesRes.text()).toBe(200);
     expect(await candidatesRes.json()).toEqual([
@@ -430,8 +442,8 @@ npm run report            # เปิด HTML report → คลิก test เ�
 
 🔴 ลองทำให้แดง แล้วอ่าน error message:
 
-1. เปลี่ยน `districtId` ของ voter เป็น `'CM-1'` → step 4 fail เพราะเขต CM-1 ไม่มีผู้สมัคร (`[]`)
-2. reset database โดยไม่ inject test data (ทำ Step 1.1–1.2 แล้ว Step 2 ใหม่ ข้าม 1.3) → step 4 fail เหมือนกัน
+1. เปลี่ยน `districtId` ของ voter เป็น `'CM-1'` → step 5 fail เพราะเขต CM-1 ไม่มีผู้สมัคร (`[]`)
+2. reset database โดยไม่ inject test data (ทำ Step 1.1–1.2 แล้ว Step 2 ใหม่ ข้าม 1.3) → step 5 fail เหมือนกัน
    **บทเรียน:** e2e test พึ่ง test data ที่เตรียมไว้ ถ้า fail ต้องดูก่อนว่าเป็นเพราะ **SUT ผิด** หรือ **environment/data ผิด**
 3. เปลี่ยน `password` เป็น `'1234'` → step 2 fail พร้อม message `password must be at least 8 characters`
 
@@ -472,6 +484,6 @@ docker compose --profile e2e down
 
 ## คำถามปิด lab
 
-- ถ้า test fail ที่ step 4 เราจะรู้ได้อย่างไรว่า bug อยู่ที่ route, service, repository หรือ test data?
+- ถ้า test fail ที่ step 5 เราจะรู้ได้อย่างไรว่า bug อยู่ที่ route, service, repository หรือ test data?
 - ทำไม e2e test ควรมี **น้อย** เมื่อเทียบกับ unit test? อะไรบ้างที่ e2e test เท่านั้นจับได้?
 - inject test data ผ่าน SQL กับผ่าน API ต่างกันอย่างไร? แบบไหนเสี่ยงกว่าเมื่อ schema เปลี่ยน?
