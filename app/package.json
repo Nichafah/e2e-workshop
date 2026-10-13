@@ -23,6 +23,7 @@
     "test:integration": "npm run db:up:test && npm run db:migrate:test && jest --selectProjects integration --runInBand",
     "db:up:e2e": "docker compose up -d --force-recreate --wait db-e2e",
     "db:migrate:e2e": "docker compose run --rm --build -e LIQUIBASE_COMMAND_URL=jdbc:postgresql://db-e2e:5432/election_e2e -e LIQUIBASE_COMMAND_CONTEXTS=e2e liquibase update",
+    "db:migrate:e2e-exercise": "docker compose run --rm --build -e LIQUIBASE_COMMAND_URL=jdbc:postgresql://db-e2e:5432/election_e2e -e LIQUIBASE_COMMAND_CONTEXTS=e2e,e2e-exercise liquibase update",
     "test:e2e": "npm run db:up:e2e && npm run db:migrate:e2e && docker compose up -d --build --force-recreate --wait app && playwright test",
     "db:down": "docker compose --profile '*' down",
     "doctor": "node scripts/doctor.mjs"

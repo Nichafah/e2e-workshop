@@ -29,3 +29,6 @@ databaseChangeLog:
   - include:
       file: changes/901-e2e-seed.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/902-e2e-exercise-seed.sql
+      relativeToChangelogFile: true

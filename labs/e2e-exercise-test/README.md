@@ -173,27 +173,27 @@ error: `400 invalid national id` (checksum ผิด), `400 password must be at 
 - **SUT (System Under Test):** election backend ทั้งตัว รันใน Docker container (`app` service ใน `app/docker-compose.yml`, build จาก `app/Dockerfile`)
 - **Dependencies:**
   - **PostgreSQL** (`db-e2e` service, port `5434`) — database ของ e2e เท่านั้น ใช้ `tmpfs` จึงว่างเปล่าทุกครั้งที่ start ใหม่
-  - **Liquibase** (`liquibase` service) — สร้าง schema + reference data (districts) + seed ของ e2e (admin, กกต., เปิดการเลือกตั้ง)
-  - **Test data** (`labs/e2e-exercise-test/test-data.sql`) — พรรค 2 พรรค + ผู้สมัคร 2 คนในเขต `CM-2` ที่ test ของเราต้องการ
+  - **Liquibase** (`liquibase` service) — สร้าง schema และ inject ข้อมูลทั้งหมดในครั้งเดียว:
+    - reference data (districts) — ไม่มี context รันทุก environment
+    - seed ของ e2e (admin, กกต., เปิดการเลือกตั้ง) — `901-e2e-seed.sql`, context `e2e`
+    - **test data ของ lab นี้** (พรรค 2 พรรค + ผู้สมัคร 2 คนในเขต `CM-2`) — `902-e2e-exercise-seed.sql`, context `e2e-exercise`
 - **Test runner:** Playwright (`e2e-exercise/`) — อยู่ **นอก** SUT และรู้จัก SUT แค่ทาง HTTP
 
 ```mermaid
 flowchart LR
     subgraph host["เครื่องเรา (host)"]
         PW["Playwright test runner<br/>e2e-exercise/"]
-        SQL["test-data.sql"]
     end
 
     subgraph docker["Docker Compose (project: election)"]
         APP["app — SUT<br/>Election API<br/>:3000"]
         DB[("db-e2e<br/>PostgreSQL 17<br/>:5434 → 5432")]
-        LB["liquibase<br/>(run once)"]
+        LB["liquibase<br/>(run once)<br/>contexts: e2e, e2e-exercise"]
     end
 
     PW -- "HTTP / JSON<br/>localhost:3000" --> APP
     APP -- "SQL (pg)<br/>DATABASE_URL" --> DB
-    LB -- "1. schema + seed" --> DB
-    SQL -- "2. inject test data<br/>(psql)" --> DB
+    LB -- "schema + seed + test data" --> DB
 ```
 
 ลำดับการ start สำคัญ: **database → schema (Liquibase) → test data → SUT → tests** และ stop กลับกัน
@@ -214,22 +214,37 @@ cd app
 # 1.1 start PostgreSQL ของ e2e (--force-recreate = ได้ database ว่างใหม่ทุกครั้ง, --wait = รอจน healthy)
 docker compose up -d --force-recreate --wait db-e2e
 
-# 1.2 สร้าง schema + seed ของ context e2e ด้วย Liquibase
-npm run db:migrate:e2e
-
-# 1.3 inject test data ของเรา (ผ่าน stdin เข้า psql ใน container)
-docker compose exec -T db-e2e psql -U election -d election_e2e -v ON_ERROR_STOP=1 \
-  < ../labs/e2e-exercise-test/test-data.sql
+# 1.2 สร้าง schema + seed + inject test data ด้วย Liquibase (contexts: e2e, e2e-exercise)
+npm run db:migrate:e2e-exercise
 ```
 
-✅ ต้องเห็น `INSERT 0 2` สองบรรทัด (พรรค 2, ผู้สมัคร 2) ตรวจด้วย:
+test data อยู่ใน `app/db/changelog/changes/902-e2e-exercise-seed.sql` เป็น changeset ปกติของ Liquibase:
+
+```sql
+--changeset election:902-seed-e2e-exercise-parties context:e2e-exercise
+INSERT INTO parties (name, logo_url, policy) VALUES
+    ('พรรคดอยสุเทพ', NULL, 'รถแดงไฟฟ้าทุกสาย'),
+    ('พรรคแม่ปิง',   NULL, 'ฝุ่น PM2.5 ต้องหมดในหนึ่งปี');
+
+--changeset election:902-seed-e2e-exercise-candidates context:e2e-exercise
+INSERT INTO candidates (district_id, party_id, number, first_name, last_name) VALUES
+    ('CM-2', (SELECT id FROM parties WHERE name = 'พรรคดอยสุเทพ'), 1, 'อนันต์', 'ศรีสุข'),
+    ('CM-2', (SELECT id FROM parties WHERE name = 'พรรคแม่ปิง'),   2, 'มาลี',   'วงศ์คำ');
+```
+
+- `context:e2e-exercise` = changeset นี้รัน **เฉพาะ** ตอนสั่ง `LIQUIBASE_COMMAND_CONTEXTS` ที่มี `e2e-exercise` (ดู script `db:migrate:e2e-exercise` ใน `app/package.json`)
+  `npm run db:migrate:e2e` และ `npm run test:e2e` เดิมจึงไม่ได้ข้อมูลชุดนี้ไปด้วย
+- ไฟล์ถูก `include` ไว้ท้าย `db/changelog/db.changelog-master.yaml` ต่อจาก `901-e2e-seed.sql`
+
+✅ ตรวจว่า changeset `902-*` รันแล้ว และมีผู้สมัคร 2 คนในเขต CM-2:
 
 ```bash
+docker compose run --rm -e LIQUIBASE_COMMAND_URL=jdbc:postgresql://db-e2e:5432/election_e2e liquibase history
 docker compose exec db-e2e psql -U election -d election_e2e \
   -c "SELECT c.district_id, c.number, c.first_name, p.name FROM candidates c JOIN parties p ON p.id = c.party_id"
 ```
 
-> **Test data มาจากไหนได้บ้าง?** (1) SQL เข้า database ตรงๆ แบบที่ทำนี้: เร็ว และ test ไม่ต้องรู้จัก role กกต.
+> **Test data มาจากไหนได้บ้าง?** (1) SQL เข้า database ตรงๆ ผ่าน Liquibase แบบที่ทำนี้: เร็ว มี version อยู่ใน git และ test ไม่ต้องรู้จัก role กกต.
 > (2) เรียก API ในฐานะ กกต. (`POST /parties`, `POST /districts/:id/candidates`): ช้ากว่า แต่ผ่าน business rule จริง
 > แบบที่ (2) คือสิ่งที่ `app/e2e/support/electionApi.ts` ทำ ลองเปรียบเทียบดู
 
@@ -414,10 +429,10 @@ test('a voter registers and then sees the candidates of their district', async (
 
 - ไม่ต้องส่ง `districtId` เพราะ SUT อ่านเขตจาก **token** ของ voter
 
-**5th step — assert รายชื่อผู้สมัคร** (ต้องตรงกับ `test-data.sql`)
+**5th step — assert รายชื่อผู้สมัคร** (ต้องตรงกับ `902-e2e-exercise-seed.sql`)
 
 ```ts
-  // 5th step: assert the candidates (the ones from test-data.sql)
+  // 5th step: assert the candidates (the ones from 902-e2e-exercise-seed.sql)
   await test.step('voter sees the CM-2 candidates', async () => {
     expect(candidatesRes.status(), await candidatesRes.text()).toBe(200);
     expect(await candidatesRes.json()).toEqual([
@@ -443,7 +458,7 @@ npm run report            # เปิด HTML report → คลิก test เ�
 🔴 ลองทำให้แดง แล้วอ่าน error message:
 
 1. เปลี่ยน `districtId` ของ voter เป็น `'CM-1'` → step 5 fail เพราะเขต CM-1 ไม่มีผู้สมัคร (`[]`)
-2. reset database โดยไม่ inject test data (ทำ Step 1.1–1.2 แล้ว Step 2 ใหม่ ข้าม 1.3) → step 5 fail เหมือนกัน
+2. reset database โดยไม่ inject test data: ทำ Step 1.1 แล้วใช้ `npm run db:migrate:e2e` (context `e2e` อย่างเดียว ไม่มี `e2e-exercise`) แทน 1.2 แล้วทำ Step 2 ใหม่ → step 5 fail เหมือนกัน
    **บทเรียน:** e2e test พึ่ง test data ที่เตรียมไว้ ถ้า fail ต้องดูก่อนว่าเป็นเพราะ **SUT ผิด** หรือ **environment/data ผิด**
 3. เปลี่ยน `password` เป็น `'1234'` → step 2 fail พร้อม message `password must be at least 8 characters`
 
@@ -464,8 +479,7 @@ docker compose ps -a      # ต้องไม่มี container เหลื�
 ```bash
 # app/
 docker compose up -d --force-recreate --wait db-e2e
-npm run db:migrate:e2e
-docker compose exec -T db-e2e psql -U election -d election_e2e -v ON_ERROR_STOP=1 < ../labs/e2e-exercise-test/test-data.sql
+npm run db:migrate:e2e-exercise
 docker compose up -d --build --wait app
 
 # e2e-exercise/
@@ -486,4 +500,4 @@ docker compose --profile e2e down
 
 - ถ้า test fail ที่ step 5 เราจะรู้ได้อย่างไรว่า bug อยู่ที่ route, service, repository หรือ test data?
 - ทำไม e2e test ควรมี **น้อย** เมื่อเทียบกับ unit test? อะไรบ้างที่ e2e test เท่านั้นจับได้?
-- inject test data ผ่าน SQL กับผ่าน API ต่างกันอย่างไร? แบบไหนเสี่ยงกว่าเมื่อ schema เปลี่ยน?
+- inject test data ผ่าน Liquibase (SQL) กับผ่าน API ต่างกันอย่างไร? แบบไหนเสี่ยงกว่าเมื่อ schema เปลี่ยน?
