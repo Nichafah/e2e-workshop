@@ -25,5 +25,6 @@ git switch jest/solution/02-aaa-unit     # ดูเฉลย / ตามไม�
 | 06 | `06-outside-in` | Day 2 เช้า | Acceptance test → component → unit | Growing Object-Oriented Software, Guided by Tests |
 | 07 | `07-legacy` | Day 2 บ่าย | Characterization tests, seams, sprout | Working Effectively with Legacy Code |
 | 08 | `08-own-project` | Day 2 บ่าย | นำทุกอย่างไปใช้กับโปรเจกต์ตัวเอง | — |
+| — | `e2e-exercise-test` | เสริม | E2E automation ด้วย Playwright: start deps + test data → SUT → test → stop | Playwright — API testing |
 
 Vitest version (`vitest/lab/NN-*`, `vitest/solution/NN-*`) จะตามมาหลัง workshop
