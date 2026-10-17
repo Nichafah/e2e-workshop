@@ -1,0 +1,37 @@
+[
+  {
+    "experiment": "rerun-without-reset",
+    "exit": 1,
+    "expected": 1
+  },
+  {
+    "experiment": "full-cycle-1",
+    "exit": 0,
+    "expected": 0
+  },
+  {
+    "experiment": "full-cycle-2",
+    "exit": 0,
+    "expected": 0
+  },
+  {
+    "experiment": "wrong-district",
+    "exit": 1,
+    "expected": 1
+  },
+  {
+    "experiment": "missing-seed-setup",
+    "exit": 0,
+    "expected": 0
+  },
+  {
+    "experiment": "missing-seed",
+    "exit": 1,
+    "expected": 1
+  },
+  {
+    "experiment": "short-password",
+    "exit": 1,
+    "expected": 1
+  }
+]
