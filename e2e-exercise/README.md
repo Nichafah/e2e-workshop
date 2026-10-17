@@ -48,7 +48,7 @@ S1 และ S3 แยก voter/เขต/ผู้สมัครกัน จ�
 | Fresh full cycle 1 | 4 passed (1.1s) | reset + seed + build + tests + teardown ผ่าน |
 | Fresh full cycle 2 | 4 passed (832ms) | พิสูจน์ repeatability ของทั้งวงจร |
 | Final clean cycle | 4 passed (961ms) | คืนค่าทั้งหมดแล้ว; teardown สำเร็จ |
-
+| Latest verified local execution: `npm run test:cycle` | **4 passed (937ms)** | ผู้ใช้ยืนยันผลรันล่าสุด: Liquibase รัน 12 changesets สำเร็จ และ cleanup Docker containers/network สำเร็จ |
 | เปลี่ยน voter เป็น CM-1 หลัง reset | 1 failed ที่ voter sees the CM-2 candidates; ได้ [] | เขตไม่ตรงข้อมูลที่คาด |
 | Reset แล้ว migrate เฉพาะ e2e | 1 failed ที่ voter sees the CM-2 candidates; ได้ [] | ไม่มี exercise seed |
 | Password เป็น 1234 หลัง reset | 1 failed; expected 201, received 400 | password must be at least 8 characters |
@@ -116,14 +116,14 @@ sequenceDiagram
 
 ## Repository ปลายทาง
 
-ตั้งชื่อของผู้ใช้เป็น `e2e-workshop`; บัญชีที่เชื่อมต่อ GitHub คือ `Nichafah`:
+Workshop ถูก push ไปยัง GitHub repository ของผู้ใช้สำเร็จแล้ว:
 
+- Repository: https://github.com/Nichafah/e2e-workshop
+- Branch: `step/e2e-exercise-test`
 - `origin`: `https://github.com/Nichafah/e2e-workshop.git`
 - `upstream`: repository ผู้สอน ใช้ fetch; push URL เป็น `DISABLED`
-- ตั้ง `remote.pushDefault=origin`, `push.default=current`; ยังไม่ได้ push
+- ตั้ง `remote.pushDefault=origin`, `push.default=current` และ local branch ติดตาม `origin/step/e2e-exercise-test`
 
-หากยังไม่ได้สร้าง ให้สร้าง repository ชื่อ `e2e-workshop` ในบัญชี Nichafah โดยไม่ initialize README/license/.gitignore แล้วตรวจ `git remote -v` ก่อนใช้ `git push -u origin step/e2e-exercise-test` ไม่ใช้คำสั่ง force push
-
-ตรวจปลายทางด้วย `git ls-remote origin HEAD` แล้ว GitHub ตอบ `Repository not found` (อาจยังไม่สร้าง หรือ Git credential ในเครื่องยังไม่มีสิทธิ์) จึงยังไม่ยืนยันการเข้าถึงและไม่ได้ push สร้างได้ที่ [GitHub: new e2e-workshop repository](https://github.com/new?name=e2e-workshop) โดยเลือก owner `Nichafah` แล้วใช้คำสั่งข้างต้น หากมี repo อยู่แล้วให้ตรวจสิทธิ์ Git HTTPS ก่อน
+Push ด้วย `git push origin step/e2e-exercise-test` และตรวจว่า local/remote ตรงกันด้วย `git fetch origin` ตามด้วย `git rev-list --left-right --count HEAD...origin/step/e2e-exercise-test` ซึ่งควรได้ `0 0` ไม่ใช้คำสั่ง force push
 
 รอบสุดท้าย HTML report server ตอบ HTTP 200; ตรวจ embedded report data ว่ามีผลผ่านครบและ journey steps; `docker compose ps -a` ไม่มี containers เหลือ ตรวจ shell syntax และ `git diff --check` ผ่าน
